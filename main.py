@@ -16,7 +16,7 @@ async def text_to_speech(text: str):
 
 
 @app.post("/render-video")
-async def render_video(audio: UploadFile = File(...), images: list[UploadFile] = File(...)):
+async def render_video(audio: UploadFile = File(...), images = File(...)):
 
     temp_audio = f"{uuid.uuid4()}.mp3"
     with open(temp_audio, "wb") as f:

@@ -25,7 +25,9 @@ async def text_to_speech(text: str):
 
 # ✅ VIDEO RENDER ENDPOINT (NO MOVIEPY)
 @app.post("/render-video")
-async def render_video(audio: UploadFile = File(...), images = File(...)):
+from typing import List
+
+async def render_video(audio: UploadFile = File(...), images: List[UploadFile] = File(...)):
 
     try:
         # Save audio file

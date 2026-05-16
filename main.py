@@ -34,27 +34,10 @@ async def render_video(
     images: List[UploadFile] = File(...)
 ):
 
-    # Save audio file
     temp_audio = f"{uuid.uuid4()}.mp3"
     with open(temp_audio, "wb") as f:
         f.write(await audio.read())
 
-    # Get audio duration using ffprobe
-    probe = subprocess.run(
-        [
-            "ffprobe",
-            "-v", "error",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
-            temp_audio
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
-
-    audio_duration = float(probe.stdout.decode().strip())
-
-    # Save images
     image_files = []
     for img in images:
         temp_img = f"{uuid.uuid4()}.png"
@@ -62,37 +45,35 @@ async def render_video(
             f.write(await img.read())
         image_files.append(temp_img)
 
-    # Calculate duration per image
-    per_image_duration = audio_duration / len(image_files)
-
-    # Create FFmpeg input list
-    input_txt = "inputs.txt"
-    with open(input_txt, "w") as f:
-        for img in image_files:
-            f.write(f"file '{img}'\n")
-            f.write(f"duration {per_image_duration}\n")
-
     output_file = f"{uuid.uuid4()}.mp4"
 
-    # 🔥 OPTIMIZED FFMPEG COMMAND (720p resolution + 1 frame rate)
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-r", "1",  # Reduced frame rate to save CPU
-            "-f", "concat",
-            "-safe", "0",
-            "-i", input_txt,
-            "-i", temp_audio,
-            "-vf", 
-            "scale=720:1280:force_original_aspect_ratio=decrease,"
-            "pad=720:1280:(ow-iw)/2:(oh-ih)/2",
-            "-pix_fmt", "yuv420p",
-            "-shortest",
-            output_file
-        ],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
+    # Build ffmpeg input args
+    ffmpeg_cmd = ["ffmpeg", "-y"]
+
+    # Add each image as looping input
+    for img in image_files:
+        ffmpeg_cmd += ["-loop", "1", "-t", "5", "-i", img]
+
+    # Add audio
+    ffmpeg_cmd += ["-i", temp_audio]
+
+    # Build filter to concatenate images
+    filter_complex = ""
+    for i in range(len(image_files)):
+        filter_complex += f"[{i}:v]scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1[v{i}];"
+
+    filter_complex += "".join([f"[v{i}]" for i in range(len(image_files))])
+    filter_complex += f"concat=n={len(image_files)}:v=1:a=0[outv]"
+
+    ffmpeg_cmd += [
+        "-filter_complex", filter_complex,
+        "-map", "[outv]",
+        "-map", f"{len(image_files)}:a",
+        "-shortest",
+        "-pix_fmt", "yuv420p",
+        output_file
+    ]
+
+    subprocess.run(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     return FileResponse(output_file, media_type="video/mp4", filename="final.mp4")

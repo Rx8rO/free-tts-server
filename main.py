@@ -1,5 +1,6 @@
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import FileResponse
+from typing import List
 import edge_tts
 import uuid
 import os
@@ -8,7 +9,7 @@ import subprocess
 app = FastAPI()
 
 
-# ✅ TTS ENDPOINT
+# ✅ TEXT TO SPEECH ENDPOINT
 @app.get("/tts")
 async def text_to_speech(text: str):
     filename = f"{uuid.uuid4()}.mp3"
@@ -23,11 +24,12 @@ async def text_to_speech(text: str):
     return FileResponse(filename, media_type="audio/mpeg", filename="speech.mp3")
 
 
-# ✅ VIDEO RENDER ENDPOINT (NO MOVIEPY)
+# ✅ VIDEO RENDER ENDPOINT (FFMPEG BASED)
 @app.post("/render-video")
-from typing import List
-
-async def render_video(audio: UploadFile = File(...), images: List[UploadFile] = File(...)):
+async def render_video(
+    audio: UploadFile = File(...),
+    images: List[UploadFile] = File(...)
+):
 
     try:
         # Save audio file
@@ -43,7 +45,7 @@ async def render_video(audio: UploadFile = File(...), images: List[UploadFile] =
                 f.write(await img.read())
             image_files.append(temp_img)
 
-        # Create input list for ffmpeg
+        # Create ffmpeg input list
         input_txt = "inputs.txt"
         with open(input_txt, "w") as f:
             for img in image_files:
@@ -52,7 +54,7 @@ async def render_video(audio: UploadFile = File(...), images: List[UploadFile] =
 
         output_file = f"{uuid.uuid4()}.mp4"
 
-        # Run FFmpeg safely
+        # Run ffmpeg slideshow
         process = subprocess.run(
             [
                 "ffmpeg",
@@ -66,14 +68,3 @@ async def render_video(audio: UploadFile = File(...), images: List[UploadFile] =
                 "-shortest",
                 output_file
             ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-
-        if process.returncode != 0:
-            return {"error": process.stderr.decode()}
-
-        return FileResponse(output_file, media_type="video/mp4", filename="final.mp4")
-
-    except Exception as e:
-        return {"error": str(e)}
